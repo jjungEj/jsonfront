@@ -1,0 +1,74 @@
+.jsonl-merger {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+}
+
+.jsonl-merger h2 {
+  margin-top: 0;
+  color: #333;
+}
+
+.merger-content {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.merger-content input[type="file"] {
+  padding: 10px;
+  border: 2px dashed #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.file-list {
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.file-list p {
+  margin: 0 0 10px 0;
+  font-weight: 500;
+  color: #333;
+}
+
+.file-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 15px 0;
+}
+
+.file-list li {
+  padding: 5px 0;
+  color: #666;
+  border-bottom: 1px solid #eee;
+}
+
+.file-list li:last-child {
+  border-bottom: none;
+}
+
+.merge-button {
+  width: 100%;
+  padding: 10px;
+  background: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.merge-button:hover:not(:disabled) {
+  background: #138496;
+}
+
+.merge-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+

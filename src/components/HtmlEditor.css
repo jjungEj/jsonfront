@@ -1,0 +1,214 @@
+.html-editor {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+.editor-header h2 {
+  margin: 0;
+  color: #333;
+  flex: 1;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.editor-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.edit-btn {
+  background: #007bff;
+  color: white;
+}
+
+.edit-btn:hover {
+  background: #0056b3;
+}
+
+.save-btn {
+  background: #28a745;
+  color: white;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.save-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  background: #6c757d;
+  color: white;
+}
+
+.cancel-btn:hover {
+  background: #5a6268;
+}
+
+.merge-btn {
+  background: #ffc107;
+  color: #333;
+}
+
+.merge-btn:hover:not(:disabled) {
+  background: #e0a800;
+}
+
+.merge-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.cell-edit-btn {
+  background: #17a2b8;
+  color: white;
+}
+
+.cell-edit-btn:hover {
+  background: #138496;
+}
+
+.cell-edit-btn.active {
+  background: #28a745;
+}
+
+.cell-edit-btn.active:hover {
+  background: #218838;
+}
+
+.editor-content {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 20px;
+  background: #fafafa;
+  scroll-behavior: smooth;
+}
+
+.preview-table,
+.editable-table {
+  width: 100%;
+}
+
+.preview-table table,
+.editable-table table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.preview-table td,
+.preview-table th,
+.editable-table td,
+.editable-table th {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.editable-table td:focus,
+.editable-table th:focus {
+  outline: 2px solid #007bff;
+  background: #f0f8ff;
+}
+
+.editable-table td[contenteditable="true"],
+.editable-table th[contenteditable="true"],
+.editable-table td.cell-editing,
+.editable-table th.cell-editing {
+  background: #fffacd !important;
+  cursor: text !important;
+  outline: 2px solid #007bff !important;
+  -webkit-user-modify: read-write !important;
+  user-modify: read-write !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+.editable-table td.cell-selected,
+.editable-table th.cell-selected {
+  background: #4da6ff !important;
+  border: 2px solid #0066cc !important;
+  border-width: 2px !important;
+  cursor: pointer !important;
+  color: white !important;
+  font-weight: 500 !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* 편집 모드가 아닐 때는 선택 스타일 제거 */
+.preview-table td.cell-selected,
+.preview-table th.cell-selected {
+  background: inherit !important;
+  border: 1px solid #ddd !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+}
+
+.editable-table td.cell-selected:hover,
+.editable-table th.cell-selected:hover {
+  background: #3399ff !important;
+}
+
+.editable-table td.cell-selected[contenteditable="true"],
+.editable-table th.cell-selected[contenteditable="true"] {
+  background: #4da6ff !important;
+  color: white !important;
+}
+
+.editable-table {
+  cursor: crosshair;
+}
+
+.editable-table td,
+.editable-table th {
+  cursor: pointer;
+  user-select: none;
+}
+
+.editable-table td[contenteditable="true"],
+.editable-table th[contenteditable="true"] {
+  cursor: text;
+  user-select: text;
+}
+
+.selection-info {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: #666;
+  font-size: 14px;
+}
+
+.merge-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
