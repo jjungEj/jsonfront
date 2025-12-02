@@ -119,28 +119,31 @@
   background: inherit;
 }
 
-.preview-table,
-.editable-table {
-  display: inline-block;
-  min-width: 100%;
+.excel-preview {
+  overflow-x: auto;
 }
 
-.preview-table table,
-.editable-table table {
-  width: auto;
-  min-width: 100%;
-  max-width: none;
+.excel-preview table {
   border-collapse: collapse;
-  background: white;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 320px;
+  background: #fff;
 }
 
-.preview-table td,
-.preview-table th,
-.editable-table td,
-.editable-table th {
+.excel-preview td,
+.excel-preview th {
   border: 1px solid #ddd;
   padding: 8px;
+  min-width: 40px;
+  word-break: break-word;
   text-align: left;
+}
+
+.preview-table,
+.editable-table {
+  display: block;
+  width: 100%;
 }
 
 .editable-table td:focus,

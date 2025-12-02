@@ -73,7 +73,7 @@ describe('HtmlEditor 셀 편집', () => {
   });
 
   const enterEditMode = async (record = sampleRecord) => {
-    render(<HtmlEditor record={record} onUpdate={jest.fn()} />);
+    render(<HtmlEditor record={record} onRecordUpdate={jest.fn()} />);
     const editButton = await screen.findByRole('button', { name: '편집' });
     await userEvent.click(editButton);
     await act(async () => {

@@ -152,7 +152,7 @@ const stripAutoFormattedNumericStrings = (html) => {
   return mutated ? wrapper.innerHTML : html;
 };
 
-const HtmlEditor = ({ record, onUpdate }) => {
+const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
   const [htmlContent, setHtmlContent] = useState(() => formatHtmlNumericStrings(record.htmlContent || ''));
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -170,7 +170,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
   }, []);
 
   const attachTableRef = useCallback((node) => {
-    console.log('attachTableRef called', !!node);
     tableRef.current = node;
   }, []);
 
@@ -205,17 +204,10 @@ const HtmlEditor = ({ record, onUpdate }) => {
   // 셀 편집 (더블클릭) - 컨테이너 단위 이벤트 델리게이션
   const beginEditing = useCallback((cell) => {
     if (!cell) {
-      console.log('beginEditing: cell이 null입니다');
       return;
     }
     
-    console.log('=== beginEditing 호출 ===');
-    console.log('셀:', cell);
-    console.log('셀 내용:', cell.textContent?.substring(0, 30));
-    console.log('셀이 document에 연결됨:', cell.isConnected);
-    
     if (editingCellRef.current && editingCellRef.current !== cell) {
-      console.log('이전 편집 셀 종료:', editingCellRef.current);
       editingCellRef.current.removeAttribute('contenteditable');
       editingCellRef.current.classList.remove('cell-editing');
     }
@@ -226,21 +218,9 @@ const HtmlEditor = ({ record, onUpdate }) => {
     
     editingCellRef.current = cell;
     
-    console.log('contentEditable 설정 전:', {
-      contentEditable: cell.contentEditable,
-      attribute: cell.getAttribute('contenteditable'),
-      hasClass: cell.classList.contains('cell-editing')
-    });
-    
     cell.setAttribute('contenteditable', 'true');
     cell.contentEditable = 'true';
     cell.classList.add('cell-editing');
-    
-    console.log('contentEditable 설정 후:', {
-      contentEditable: cell.contentEditable,
-      attribute: cell.getAttribute('contenteditable'),
-      hasClass: cell.classList.contains('cell-editing')
-    });
     
     cell.style.setProperty('background-color', '#fffacd', 'important');
     cell.style.setProperty('border', '2px solid #007bff', 'important');
@@ -250,21 +230,13 @@ const HtmlEditor = ({ record, onUpdate }) => {
     cell.style.setProperty('-webkit-user-select', 'text', 'important');
     cell.classList.remove('cell-selected');
     
-    console.log('스타일 설정 완료:', {
-      backgroundColor: cell.style.backgroundColor,
-      userSelect: cell.style.userSelect
-    });
-    
     requestAnimationFrame(() => {
       try {
         if (!cell.isConnected) {
-          console.log('셀이 document에서 분리됨');
           return;
         }
         
-        console.log('포커스 시도');
         cell.focus();
-        console.log('포커스 완료, document.activeElement:', document.activeElement);
         
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
@@ -274,7 +246,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
         const range = document.createRange();
         
         if (!cell.isConnected) {
-          console.log('셀이 range 생성 중 document에서 분리됨');
           return;
         }
         
@@ -283,9 +254,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
         
         if (range.startContainer && range.startContainer.isConnected) {
           selection.addRange(range);
-          console.log('포커스 및 커서 설정 완료');
         } else {
-          console.log('range가 유효하지 않음');
           cell.focus();
         }
       } catch (err) {
@@ -608,6 +577,12 @@ const HtmlEditor = ({ record, onUpdate }) => {
   }, [selectedCellIndices, isEditing, htmlContent, applyCellStyles]);
 
   const handleSave = async () => {
+    const recordId = record?.id ?? record?.recordId;
+    if (!recordId) {
+      alert('레코드 식별자를 찾을 수 없습니다.');
+      return;
+    }
+
     setSaving(true);
     try {
       // 먼저 모든 스타일 제거
@@ -637,7 +612,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          recordId: record.id,
+          recordId,
           htmlContent: payloadHtml,
         }),
       });
@@ -646,11 +621,16 @@ const HtmlEditor = ({ record, onUpdate }) => {
         throw new Error('저장 실패');
       }
 
+      const updatedRecord = await response.json();
+
       // 편집 모드 종료 (먼저 종료)
       setIsEditing(false);
       
-      // 업데이트 호출
-      await onUpdate();
+      if (updatedRecord?.htmlContent) {
+        updateHtmlContent(updatedRecord.htmlContent);
+      }
+      
+      await onRecordUpdate(updatedRecord);
       
       // 저장 후 여러 번 스타일 제거 (업데이트 후 DOM이 재렌더링될 수 있음)
       const removeStyles = () => {
@@ -752,7 +732,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
     
     // 더블클릭이면 즉시 편집
     if (isDoubleClick) {
-      console.log('handleMouseDown: 더블클릭 감지, 즉시 편집 모드 진입');
       if (cell) {
         setIsDragging(false);
         setSelectedCellIndices([]);
@@ -765,7 +744,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
     if (cell && (cell.tagName === 'TD' || cell.tagName === 'TH')) {
       // contentEditable이 활성화된 셀은 드래그 선택 안함
       if (cell.contentEditable === 'true' || cell.classList.contains('cell-editing')) {
-        console.log('handleMouseDown: 편집 중인 셀, 드래그 선택 안함');
         return;
       }
       
@@ -1036,7 +1014,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
           {isEditing ? (
             <div
               ref={attachTableRef}
-              className="editable-table"
+              className="editable-table excel-preview"
               dangerouslySetInnerHTML={{ __html: htmlContent }}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
@@ -1050,7 +1028,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
             />
           ) : (
             <div
-              className="preview-table"
+              className="preview-table excel-preview"
               dangerouslySetInnerHTML={{ __html: htmlContent }}
             />
           )}
