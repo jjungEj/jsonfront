@@ -1,19 +1,121 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import './HtmlEditor.css';
 
+const numberFormatter = new Intl.NumberFormat('ko-KR');
+const numericPattern = /^-?\d+(\.\d+)?$/;
+const TEXT_NODE = typeof Node !== 'undefined' ? Node.TEXT_NODE : 3;
+
+const formatNumericCellText = (text) => {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return text;
+  }
+
+  // 이미 , 포함되거나 수치 외 문자 포함 시 변경하지 않음
+  if (trimmed.includes(',') || trimmed.includes(' ')) {
+    return trimmed;
+  }
+
+  if (!numericPattern.test(trimmed)) {
+    return trimmed;
+  }
+
+  const unsigned = trimmed.startsWith('-') ? trimmed.slice(1) : trimmed;
+  const integerPart = unsigned.split('.')[0];
+
+  // 매우 큰 정수나 0으로 시작하는 식별자(예: 00123)는 그대로 둠
+  if (integerPart.length > 15 || (/^0\d/.test(unsigned) && !trimmed.includes('.'))) {
+    return trimmed;
+  }
+
+  const isNegative = trimmed.startsWith('-');
+  const [intPartRaw, decimalPartRaw] = unsigned.split('.');
+  const parsedInt = Number(intPartRaw);
+
+  if (!Number.isFinite(parsedInt)) {
+    return trimmed;
+  }
+
+  const signedInt = isNegative ? -parsedInt : parsedInt;
+  const formattedInt = numberFormatter.format(signedInt);
+
+  if (!decimalPartRaw) {
+    return formattedInt;
+  }
+
+  if (/^0+$/.test(decimalPartRaw)) {
+    return formattedInt;
+  }
+
+  return `${formattedInt}.${decimalPartRaw}`;
+};
+
+const formatHtmlNumericStrings = (html) => {
+  if (!html) {
+    return '';
+  }
+
+  if (typeof document === 'undefined') {
+    return html;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  let mutated = false;
+
+  const cells = wrapper.querySelectorAll('td, th');
+  cells.forEach((cell) => {
+    if (cell.childNodes.length !== 1) {
+      return;
+    }
+
+    const firstChild = cell.childNodes[0];
+    if (!firstChild || firstChild.nodeType !== TEXT_NODE) {
+      return;
+    }
+
+    const originalText = firstChild.textContent || '';
+    const formattedText = formatNumericCellText(originalText);
+    if (formattedText !== originalText) {
+      firstChild.textContent = formattedText;
+      mutated = true;
+    }
+  });
+
+  return mutated ? wrapper.innerHTML : html;
+};
+
 const HtmlEditor = ({ record, onUpdate }) => {
-  const [htmlContent, setHtmlContent] = useState(record.htmlContent || '');
+  const [htmlContent, setHtmlContent] = useState(() => formatHtmlNumericStrings(record.htmlContent || ''));
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedCellIndices, setSelectedCellIndices] = useState([]); // [{row, col}, ...] 형태로 저장
   const [isDragging, setIsDragging] = useState(false);
   const [startCellIndex, setStartCellIndex] = useState(null);
   const tableRef = useRef(null);
+  const [tableNode, setTableNode] = useState(null);
   const editingCellRef = useRef(null); // 현재 편집 중인 셀
+  const savedHtmlRef = useRef(htmlContent);
+
+  const updateHtmlContent = useCallback((rawHtml) => {
+    const normalized = formatHtmlNumericStrings(rawHtml || '');
+    savedHtmlRef.current = normalized;
+    setHtmlContent(normalized);
+  }, []);
+
+  const attachTableRef = useCallback((node) => {
+    console.log('attachTableRef called', !!node);
+    tableRef.current = node;
+    setTableNode(node);
+  }, []);
 
   useEffect(() => {
     const newHtml = record.htmlContent || '';
-    setHtmlContent(newHtml);
+    updateHtmlContent(newHtml);
     setIsEditing(false);
     setSelectedCellIndices([]);
     setStartCellIndex(null);
@@ -37,203 +139,201 @@ const HtmlEditor = ({ record, onUpdate }) => {
     setTimeout(removeStyles, 10);
     setTimeout(removeStyles, 50);
     setTimeout(removeStyles, 100);
-  }, [record]);
+  }, [record, updateHtmlContent]);
 
-  // 셀 편집 (더블클릭) - QA.js 방식: 각 셀에 직접 이벤트 리스너 추가 + MutationObserver로 재바인딩
-  useEffect(() => {
-    if (!isEditing || !tableRef.current) return;
-
-    let observer = null;
-    let savedHtmlContent = htmlContent;
-    let eventBindings = [];
-
-      const beginEditing = (cell) => {
-        if (!cell) {
-          console.log('beginEditing: cell이 null입니다');
+  // 셀 편집 (더블클릭) - 컨테이너 단위 이벤트 델리게이션
+  const beginEditing = useCallback((cell) => {
+    if (!cell) {
+      console.log('beginEditing: cell이 null입니다');
+      return;
+    }
+    
+    console.log('=== beginEditing 호출 ===');
+    console.log('셀:', cell);
+    console.log('셀 내용:', cell.textContent?.substring(0, 30));
+    console.log('셀이 document에 연결됨:', cell.isConnected);
+    
+    if (editingCellRef.current && editingCellRef.current !== cell) {
+      console.log('이전 편집 셀 종료:', editingCellRef.current);
+      editingCellRef.current.removeAttribute('contenteditable');
+      editingCellRef.current.classList.remove('cell-editing');
+    }
+    
+    setSelectedCellIndices([]);
+    setStartCellIndex(null);
+    setIsDragging(false);
+    
+    editingCellRef.current = cell;
+    
+    console.log('contentEditable 설정 전:', {
+      contentEditable: cell.contentEditable,
+      attribute: cell.getAttribute('contenteditable'),
+      hasClass: cell.classList.contains('cell-editing')
+    });
+    
+    cell.setAttribute('contenteditable', 'true');
+    cell.contentEditable = 'true';
+    cell.classList.add('cell-editing');
+    
+    console.log('contentEditable 설정 후:', {
+      contentEditable: cell.contentEditable,
+      attribute: cell.getAttribute('contenteditable'),
+      hasClass: cell.classList.contains('cell-editing')
+    });
+    
+    cell.style.setProperty('background-color', '#fffacd', 'important');
+    cell.style.setProperty('border', '2px solid #007bff', 'important');
+    cell.style.setProperty('color', '#000', 'important');
+    cell.style.setProperty('font-weight', 'normal', 'important');
+    cell.style.setProperty('user-select', 'text', 'important');
+    cell.style.setProperty('-webkit-user-select', 'text', 'important');
+    cell.classList.remove('cell-selected');
+    
+    console.log('스타일 설정 완료:', {
+      backgroundColor: cell.style.backgroundColor,
+      userSelect: cell.style.userSelect
+    });
+    
+    requestAnimationFrame(() => {
+      try {
+        if (!cell.isConnected) {
+          console.log('셀이 document에서 분리됨');
           return;
         }
         
-        console.log('=== beginEditing 호출 ===');
-        console.log('셀:', cell);
-        console.log('셀 내용:', cell.textContent?.substring(0, 30));
-        console.log('셀이 document에 연결됨:', cell.isConnected);
+        console.log('포커스 시도');
+        cell.focus();
+        console.log('포커스 완료, document.activeElement:', document.activeElement);
         
-        // 이전 편집 셀 종료
-        if (editingCellRef.current && editingCellRef.current !== cell) {
-          console.log('이전 편집 셀 종료:', editingCellRef.current);
-          editingCellRef.current.removeAttribute('contenteditable');
-          editingCellRef.current.classList.remove('cell-editing');
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          selection.removeAllRanges();
         }
         
-        // 선택 초기화
-        setSelectedCellIndices([]);
-        setStartCellIndex(null);
-        setIsDragging(false);
+        const range = document.createRange();
         
-        editingCellRef.current = cell;
+        if (!cell.isConnected) {
+          console.log('셀이 range 생성 중 document에서 분리됨');
+          return;
+        }
         
-        // contentEditable 설정
-        console.log('contentEditable 설정 전:', {
-          contentEditable: cell.contentEditable,
-          attribute: cell.getAttribute('contenteditable'),
-          hasClass: cell.classList.contains('cell-editing')
-        });
+        range.selectNodeContents(cell);
+        range.collapse(false);
         
-        cell.setAttribute('contenteditable', 'true');
-        cell.contentEditable = 'true';
-        cell.classList.add('cell-editing');
-        
-        console.log('contentEditable 설정 후:', {
-          contentEditable: cell.contentEditable,
-          attribute: cell.getAttribute('contenteditable'),
-          hasClass: cell.classList.contains('cell-editing')
-        });
-        
-        // 스타일 제거 (편집 가능하도록) - !important로 덮어쓰기
-        cell.style.setProperty('background-color', '#fffacd', 'important');
-        cell.style.setProperty('border', '2px solid #007bff', 'important');
-        cell.style.setProperty('color', '#000', 'important');
-        cell.style.setProperty('font-weight', 'normal', 'important');
-        cell.style.setProperty('user-select', 'text', 'important');
-        cell.style.setProperty('-webkit-user-select', 'text', 'important');
-        cell.classList.remove('cell-selected');
-        
-        console.log('스타일 설정 완료:', {
-          backgroundColor: cell.style.backgroundColor,
-          userSelect: cell.style.userSelect
-        });
-        
-        // 포커스 및 커서 설정 (QA.js 방식: requestAnimationFrame 사용)
-        requestAnimationFrame(() => {
-          try {
-            // cell이 여전히 document에 연결되어 있는지 확인
-            if (!cell.isConnected) {
-              console.log('셀이 document에서 분리됨');
-              return;
-            }
-            
-            console.log('포커스 시도');
-            cell.focus();
-            console.log('포커스 완료, document.activeElement:', document.activeElement);
-            
-            // range를 생성하고 즉시 사용
-            const selection = window.getSelection();
-            if (selection.rangeCount > 0) {
-              selection.removeAllRanges();
-            }
-            
-            const range = document.createRange();
-            
-            // cell이 여전히 유효한지 다시 확인
-            if (!cell.isConnected) {
-              console.log('셀이 range 생성 중 document에서 분리됨');
-              return;
-            }
-            
-            range.selectNodeContents(cell);
-            range.collapse(false);
-            
-            // range가 유효한지 확인
-            if (range.startContainer && range.startContainer.isConnected) {
-              selection.addRange(range);
-              console.log('포커스 및 커서 설정 완료');
-            } else {
-              console.log('range가 유효하지 않음');
-              // 대체 방법: 단순히 포커스만
-              cell.focus();
-            }
-          } catch (err) {
-            console.error('포커스 설정 실패:', err);
-            // 에러가 발생해도 포커스는 시도
-            try {
-              cell.focus();
-            } catch (focusErr) {
-              console.error('포커스도 실패:', focusErr);
-            }
-          }
-        });
-      };
+        if (range.startContainer && range.startContainer.isConnected) {
+          selection.addRange(range);
+          console.log('포커스 및 커서 설정 완료');
+        } else {
+          console.log('range가 유효하지 않음');
+          cell.focus();
+        }
+      } catch (err) {
+        console.error('포커스 설정 실패:', err);
+        try {
+          cell.focus();
+        } catch (focusErr) {
+          console.error('포커스도 실패:', focusErr);
+        }
+      }
+    });
+  }, []);
 
-    const endEditing = (cell) => {
-      if (!cell) return;
-      cell.classList.remove('cell-editing');
-      cell.removeAttribute('contenteditable');
-      cell.contentEditable = 'false';
-      if (editingCellRef.current === cell) {
-        editingCellRef.current = null;
+  const endEditing = useCallback((cell) => {
+    if (!cell) return;
+    cell.classList.remove('cell-editing');
+    cell.removeAttribute('contenteditable');
+    cell.contentEditable = 'false';
+    if (editingCellRef.current === cell) {
+      editingCellRef.current = null;
+    }
+    if (tableRef.current) {
+      const newHtml = tableRef.current.innerHTML;
+      updateHtmlContent(newHtml);
+    }
+  }, [updateHtmlContent]);
+
+  useLayoutEffect(() => {
+    if (!isEditing || !tableNode) {
+      if (!isEditing && tableNode) {
+        const table = tableNode.querySelector('table');
+        if (table) {
+          const cells = table.querySelectorAll('td, th');
+          cells.forEach((cell) => {
+            cell.removeAttribute('contenteditable');
+            cell.classList.remove('cell-editing');
+          });
+        }
       }
-      // HTML 업데이트
-      if (tableRef.current) {
-        const newHtml = tableRef.current.innerHTML;
-        setHtmlContent(newHtml);
-        savedHtmlContent = newHtml;
+      return;
+    }
+
+    const container = tableNode;
+
+    const resolveCell = (target) => {
+      let node = target;
+      while (node && node !== container) {
+        if (node.tagName === 'TD' || node.tagName === 'TH') {
+          return node;
+        }
+        node = node.parentElement;
       }
+      return null;
     };
 
-    // QA.js 방식: 각 셀에 직접 이벤트 리스너 추가
-    const setupEventHandlers = () => {
-      if (!tableRef.current) return;
-      
-      // 기존 이벤트 리스너 제거
-      eventBindings.forEach(({ cell, type, handler }) => {
-        if (cell && cell.removeEventListener) {
-          cell.removeEventListener(type, handler);
-        }
-      });
-      eventBindings = [];
+    const handleDoubleClick = (event) => {
+      if (event.__htmlEditorHandled) {
+        return;
+      }
+      event.__htmlEditorHandled = true;
+      const cell = resolveCell(event.target);
+      if (!cell || !container.contains(cell)) {
+        return;
+      }
 
-      const cells = tableRef.current.querySelectorAll('td, th');
-      if (cells.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
 
-      const createDblClickHandler = (cell) => (event) => {
-        console.log('=== 더블클릭 이벤트 발생 ===');
-        console.log('셀:', cell);
-        console.log('셀 내용:', cell.textContent?.substring(0, 30));
-        console.log('이벤트:', event);
-        console.log('contentEditable:', cell.contentEditable);
-        console.log('cell-editing 클래스:', cell.classList.contains('cell-editing'));
-        
-        // 다른 이벤트가 방해하지 않도록 먼저 처리
+      setIsDragging(false);
+      setSelectedCellIndices([]);
+      setStartCellIndex(null);
+
+      beginEditing(cell);
+    };
+
+    const handleKeyDown = (event) => {
+      const cell = resolveCell(event.target);
+      if (!cell || !container.contains(cell)) {
+        return;
+      }
+
+      if (!cell.classList.contains('cell-editing')) {
+        return;
+      }
+
+      if (
+        event.key.length === 1 ||
+        event.key === 'Backspace' ||
+        event.key === 'Delete' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'ArrowRight' ||
+        event.key === 'ArrowUp' ||
+        event.key === 'ArrowDown'
+      ) {
+        return;
+      }
+
+      if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        
-        // 드래그 상태 초기화
-        setIsDragging(false);
-        setSelectedCellIndices([]);
-        setStartCellIndex(null);
-        
-        // 편집 시작
-        console.log('beginEditing 호출 전');
-        beginEditing(cell);
-        console.log('beginEditing 호출 후');
-      };
-
-      const createBlurHandler = (cell) => () => {
-        endEditing(cell);
-      };
-
-      const createKeyDownHandler = (cell) => (event) => {
-        // 편집 중인 셀이 아니면 무시
-        if (!cell.classList.contains('cell-editing') && cell.contentEditable !== 'true') {
-          return;
-        }
-        
-        // 일반 텍스트 입력은 허용 (아무것도 하지 않음)
-        if (event.key.length === 1 || event.key === 'Backspace' || event.key === 'Delete' || event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-          return; // 기본 동작 허용
-        }
-        
-        if (event.key === 'Enter' && !event.shiftKey) {
-          event.preventDefault();
-          cell.blur();
-        } else if (event.key === 'Escape') {
-          event.preventDefault();
-          // 원래 내용으로 복원
+        cell.blur();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        const savedHtml = savedHtmlRef.current;
+        if (savedHtml && tableRef.current) {
           const parser = new DOMParser();
-          const doc = parser.parseFromString(savedHtmlContent, 'text/html');
+          const doc = parser.parseFromString(savedHtml, 'text/html');
           const originalTable = doc.querySelector('table');
-          if (originalTable && tableRef.current) {
+          if (originalTable) {
             const currentTable = tableRef.current.querySelector('table');
             if (currentTable) {
               const rows = Array.from(currentTable.rows);
@@ -252,93 +352,48 @@ const HtmlEditor = ({ record, onUpdate }) => {
               }
             }
           }
-          cell.blur();
         }
-      };
-
-      cells.forEach((cell) => {
-        const dblHandler = createDblClickHandler(cell);
-        const blurHandler = createBlurHandler(cell);
-        const keyDownHandler = createKeyDownHandler(cell);
-
-        // 더블클릭은 캡처 단계에서 처리 (다른 이벤트보다 먼저)
-        // 더블클릭은 버블링 단계에서도 처리 (확실하게)
-        cell.addEventListener('dblclick', dblHandler, true);
-        cell.addEventListener('dblclick', dblHandler, false);
-        cell.addEventListener('blur', blurHandler, true);
-        cell.addEventListener('keydown', keyDownHandler, true);
-
-        eventBindings.push(
-          { cell, type: 'dblclick', handler: dblHandler },
-          { cell, type: 'blur', handler: blurHandler },
-          { cell, type: 'keydown', handler: keyDownHandler },
-        );
-      });
-      
-      console.log(`이벤트 리스너 바인딩 완료: ${cells.length}개 셀`);
-      
-      // 테스트: 첫 번째 셀에 더블클릭 이벤트가 있는지 확인
-      if (cells.length > 0) {
-        const testCell = cells[0];
-        // 실제로 더블클릭 이벤트를 테스트
-        testCell.addEventListener('dblclick', () => {
-          console.log('테스트: 첫 번째 셀 더블클릭 이벤트 작동!');
-        }, { once: true });
+        cell.blur();
       }
     };
 
-    // 초기 설정 (약간의 지연 후 실행)
-    const setupWithDelay = () => {
-      setTimeout(() => {
-        setupEventHandlers();
-      }, 0);
-      setTimeout(() => {
-        setupEventHandlers();
-      }, 100);
-      setTimeout(() => {
-        setupEventHandlers();
-      }, 300);
-    };
-    
-    setupWithDelay();
-
-    // MutationObserver로 DOM 변경 감지하여 이벤트 재바인딩
-    observer = new MutationObserver((mutations) => {
-      // 편집 중인 셀이 있으면 재바인딩하지 않음
-      if (editingCellRef.current) {
-        console.log('편집 중인 셀이 있어서 재바인딩 스킵');
+    const handleBlur = (event) => {
+      const cell = resolveCell(event.target);
+      if (!cell || !container.contains(cell)) {
         return;
       }
-      
-      // childList 변경이 있을 때만 재바인딩
-      const hasChildListChanges = mutations.some(m => m.type === 'childList');
-      if (hasChildListChanges) {
-        console.log('DOM 변경 감지, 이벤트 재바인딩');
-        setTimeout(setupEventHandlers, 50);
-      }
-    });
 
-    if (tableRef.current) {
-      observer.observe(tableRef.current, {
-        childList: true,
-        subtree: true,
-        attributes: false
-      });
+      if (cell === editingCellRef.current) {
+        endEditing(cell);
+      }
+    };
+
+    const documentDoubleClickLogger = (event) => {
+      console.log('doc dblclick', event.target.tagName);
+    };
+
+    document.addEventListener('dblclick', documentDoubleClickLogger, true);
+    container.addEventListener('dblclick', handleDoubleClick, true);
+    container.addEventListener('dblclick', handleDoubleClick);
+    container.addEventListener('keydown', handleKeyDown, true);
+    container.addEventListener('blur', handleBlur, true);
+
+    const sampleCell = container.querySelector('td');
+    if (sampleCell) {
+      sampleCell.addEventListener('dblclick', () => {
+        console.log('cell dblclick fired');
+      }, { once: true });
     }
 
     return () => {
-      if (observer) {
-        observer.disconnect();
-      }
-      
-      eventBindings.forEach(({ cell, type, handler }) => {
-        if (cell && cell.removeEventListener) {
-          cell.removeEventListener(type, handler);
-        }
-      });
-      
-      if (tableRef.current) {
-        const table = tableRef.current.querySelector('table');
+      document.removeEventListener('dblclick', documentDoubleClickLogger, true);
+      container.removeEventListener('dblclick', handleDoubleClick, true);
+      container.removeEventListener('dblclick', handleDoubleClick);
+      container.removeEventListener('keydown', handleKeyDown, true);
+      container.removeEventListener('blur', handleBlur, true);
+
+      if (container) {
+        const table = container.querySelector('table');
         if (table) {
           const cells = table.querySelectorAll('td, th');
           cells.forEach((cell) => {
@@ -349,7 +404,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
       }
       editingCellRef.current = null;
     };
-  }, [isEditing, htmlContent]);
+  }, [isEditing, beginEditing, endEditing, tableNode]);
 
   // 인덱스로 셀 찾기
   const getCellByIndex = (rowIndex, colIndex) => {
@@ -728,7 +783,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
       e.target.contentEditable = 'false';
       // 업데이트된 HTML 가져오기
       if (tableRef.current) {
-        setHtmlContent(tableRef.current.innerHTML);
+        updateHtmlContent(tableRef.current.innerHTML);
       }
     }
   };
@@ -846,7 +901,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
       });
       
       // HTML 업데이트
-      setHtmlContent(newHtml);
+      updateHtmlContent(newHtml);
     }
   };
 
@@ -874,7 +929,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
               </button>
               <button
                 onClick={() => {
-                  setHtmlContent(record.htmlContent);
+                  updateHtmlContent(record.htmlContent);
                   setSelectedCellIndices([]);
                   setStartCellIndex(null);
                   setIsEditing(false);
@@ -903,7 +958,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
       <div className="editor-content">
         {isEditing ? (
           <div
-            ref={tableRef}
+            ref={attachTableRef}
             className="editable-table"
             dangerouslySetInnerHTML={{ __html: htmlContent }}
             onMouseDown={handleMouseDown}
