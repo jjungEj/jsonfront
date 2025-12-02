@@ -212,6 +212,11 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
   }, [isEditing]);
 
   // 셀 편집 (더블클릭) - 컨테이너 단위 이벤트 델리게이션
+  /**
+   * [수정 필요!] 
+   * 여기 셀 편집 하는 부분 
+   * 키 하나도 안 먹음;;;;
+   */
   const beginEditing = useCallback((cell) => {
     if (!cell) {
       return;
@@ -476,7 +481,18 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     return { matrix, cellMetaMap };
   };
 
-  // 좌표로 셀 찾기
+
+  /**
+   * 좌표로 셀 찾기 
+   * matrix 2차원 배열 받음
+   * 
+   * [수정 필요!] 
+   * 찾으려고 하는 요소 (rowIndex, colIndex) 받음
+   * 해당 좌표가 유효한 범위 내에 있을 경우에만 그 위치의 셀을 반환
+   * 범위를 벗어날 경우에는 오류를 발생 -> null 반환
+   * 
+   * !! 주변 셀이 병합이 되어있는 경우 해당 좌표 부분을 유효한 범위라고 인식 하지않음 
+   */
   const findCellByCoordinates = (matrix, rowIndex, colIndex) => {
     if (!matrix[rowIndex] || !matrix[rowIndex][colIndex]) {
       return null;
@@ -655,6 +671,10 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
       await onRecordUpdate(updatedRecord);
       
       // 저장 후 여러 번 스타일 제거 (업데이트 후 DOM이 재렌더링될 수 있음)
+      /**
+       * [수정 필요!] 
+       * 저장 후 border 다 사라짐 ;;; 편집 누르면 다시 뜨긴 하는데 
+       */
       const removeStyles = () => {
         if (tableRef.current) {
           const allCells = tableRef.current.querySelectorAll('td, th');
@@ -788,7 +808,15 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
       lastClickCache.timestamp = now;
     }
     
-    // 더블클릭이면 즉시 편집
+    /**
+     * 더블클릭이면 즉시 편집
+     * [수정 필요!] 
+     * !! 글자 수정이 되지않음
+     *    더블클릭 하고 text를 수정 x 
+     *    셀 병합하는 것처럼 '글자 수정' 이라는 버튼이 필요? -> 너무 복잡함
+     *    이전처럼 더블클릭으로 진행
+     * 
+     */
     if (isDoubleClick) {
       if (cell) {
         setIsDragging(false);
@@ -1098,4 +1126,3 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
 };
 
 export default HtmlEditor;
-
