@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './HtmlEditor.css';
 
 const numberFormatter = new Intl.NumberFormat('ko-KR');
 const numericPattern = /^-?\d+(\.\d+)?$/;
+const formattedNumericPattern = /^-?\d{1,3}(,\d{3})*(\.\d+)?$/;
 const TEXT_NODE = typeof Node !== 'undefined' ? Node.TEXT_NODE : 3;
+const lastClickCache = { pos: null, timestamp: 0 };
 
 const formatNumericCellText = (text) => {
   if (typeof text !== 'string') {
@@ -82,6 +84,67 @@ const formatHtmlNumericStrings = (html) => {
     const formattedText = formatNumericCellText(originalText);
     if (formattedText !== originalText) {
       firstChild.textContent = formattedText;
+      cell.setAttribute('data-auto-formatted', 'true');
+      mutated = true;
+    } else if (
+      cell.hasAttribute('data-auto-formatted') &&
+      !(formattedNumericPattern.test((firstChild.textContent || '').trim()))
+    ) {
+      cell.removeAttribute('data-auto-formatted');
+      mutated = true;
+    }
+  });
+
+  return mutated ? wrapper.innerHTML : html;
+};
+
+const stripNumericFormattingFromText = (text) => {
+  if (typeof text !== 'string') {
+    return text;
+  }
+
+  const trimmed = text.trim();
+  if (!trimmed || !trimmed.includes(',')) {
+    return text;
+  }
+
+  if (!formattedNumericPattern.test(trimmed)) {
+    return text;
+  }
+
+  return trimmed.replace(/,/g, '');
+};
+
+const stripAutoFormattedNumericStrings = (html) => {
+  if (!html) {
+    return '';
+  }
+
+  if (typeof document === 'undefined') {
+    return html;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  let mutated = false;
+
+  const cells = wrapper.querySelectorAll('td[data-auto-formatted="true"], th[data-auto-formatted="true"]');
+
+  cells.forEach((cell) => {
+    if (cell.childNodes.length === 1) {
+      const firstChild = cell.childNodes[0];
+      if (firstChild && firstChild.nodeType === TEXT_NODE) {
+        const originalText = firstChild.textContent || '';
+        const unformattedText = stripNumericFormattingFromText(originalText);
+        if (unformattedText !== originalText) {
+          firstChild.textContent = unformattedText;
+          mutated = true;
+        }
+      }
+    }
+
+    if (cell.hasAttribute('data-auto-formatted')) {
+      cell.removeAttribute('data-auto-formatted');
       mutated = true;
     }
   });
@@ -97,7 +160,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [startCellIndex, setStartCellIndex] = useState(null);
   const tableRef = useRef(null);
-  const [tableNode, setTableNode] = useState(null);
   const editingCellRef = useRef(null); // 현재 편집 중인 셀
   const savedHtmlRef = useRef(htmlContent);
 
@@ -110,7 +172,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
   const attachTableRef = useCallback((node) => {
     console.log('attachTableRef called', !!node);
     tableRef.current = node;
-    setTableNode(node);
   }, []);
 
   useEffect(() => {
@@ -252,159 +313,115 @@ const HtmlEditor = ({ record, onUpdate }) => {
     }
   }, [updateHtmlContent]);
 
-  useLayoutEffect(() => {
-    if (!isEditing || !tableNode) {
-      if (!isEditing && tableNode) {
-        const table = tableNode.querySelector('table');
-        if (table) {
-          const cells = table.querySelectorAll('td, th');
-          cells.forEach((cell) => {
-            cell.removeAttribute('contenteditable');
-            cell.classList.remove('cell-editing');
-          });
-        }
+  const resolveCell = useCallback((target) => {
+    const container = tableRef.current;
+    if (!container) {
+      return null;
+    }
+
+    let node = target;
+    while (node && node !== container) {
+      if (node.tagName === 'TD' || node.tagName === 'TH') {
+        return node;
       }
+      node = node.parentElement;
+    }
+    return null;
+  }, []);
+
+  const handleKeyDown = useCallback((event) => {
+    if (!isEditing) {
       return;
     }
 
-    const container = tableNode;
+    const cell = resolveCell(event.target);
+    if (!cell || !cell.classList.contains('cell-editing')) {
+      return;
+    }
 
-    const resolveCell = (target) => {
-      let node = target;
-      while (node && node !== container) {
-        if (node.tagName === 'TD' || node.tagName === 'TH') {
-          return node;
-        }
-        node = node.parentElement;
-      }
-      return null;
-    };
+    if (
+      event.key.length === 1 ||
+      event.key === 'Backspace' ||
+      event.key === 'Delete' ||
+      event.key === 'ArrowLeft' ||
+      event.key === 'ArrowRight' ||
+      event.key === 'ArrowUp' ||
+      event.key === 'ArrowDown'
+    ) {
+      return;
+    }
 
-    const handleDoubleClick = (event) => {
-      if (event.__htmlEditorHandled) {
-        return;
-      }
-      event.__htmlEditorHandled = true;
-      const cell = resolveCell(event.target);
-      if (!cell || !container.contains(cell)) {
-        return;
-      }
-
+    if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-
-      setIsDragging(false);
-      setSelectedCellIndices([]);
-      setStartCellIndex(null);
-
-      beginEditing(cell);
-    };
-
-    const handleKeyDown = (event) => {
-      const cell = resolveCell(event.target);
-      if (!cell || !container.contains(cell)) {
-        return;
-      }
-
-      if (!cell.classList.contains('cell-editing')) {
-        return;
-      }
-
-      if (
-        event.key.length === 1 ||
-        event.key === 'Backspace' ||
-        event.key === 'Delete' ||
-        event.key === 'ArrowLeft' ||
-        event.key === 'ArrowRight' ||
-        event.key === 'ArrowUp' ||
-        event.key === 'ArrowDown'
-      ) {
-        return;
-      }
-
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        cell.blur();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        const savedHtml = savedHtmlRef.current;
-        if (savedHtml && tableRef.current) {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(savedHtml, 'text/html');
-          const originalTable = doc.querySelector('table');
-          if (originalTable) {
-            const currentTable = tableRef.current.querySelector('table');
-            if (currentTable) {
-              const rows = Array.from(currentTable.rows);
-              const originalRows = Array.from(originalTable.rows);
-              
-              for (let i = 0; i < rows.length; i++) {
-                const cells = Array.from(rows[i].cells);
-                const cellIndex = cells.indexOf(cell);
-                if (cellIndex >= 0 && originalRows[i]) {
-                  const originalCells = Array.from(originalRows[i].cells);
-                  if (originalCells[cellIndex]) {
-                    cell.innerHTML = originalCells[cellIndex].innerHTML;
-                  }
-                  break;
+      cell.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      const savedHtml = savedHtmlRef.current;
+      if (savedHtml && tableRef.current) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(savedHtml, 'text/html');
+        const originalTable = doc.querySelector('table');
+        if (originalTable) {
+          const currentTable = tableRef.current.querySelector('table');
+          if (currentTable) {
+            const rows = Array.from(currentTable.rows);
+            const originalRows = Array.from(originalTable.rows);
+            
+            for (let i = 0; i < rows.length; i++) {
+              const cells = Array.from(rows[i].cells);
+              const cellIndex = cells.indexOf(cell);
+              if (cellIndex >= 0 && originalRows[i]) {
+                const originalCells = Array.from(originalRows[i].cells);
+                if (originalCells[cellIndex]) {
+                  cell.innerHTML = originalCells[cellIndex].innerHTML;
                 }
+                break;
               }
             }
           }
         }
-        cell.blur();
       }
-    };
+      cell.blur();
+    }
+  }, [isEditing, resolveCell]);
 
-    const handleBlur = (event) => {
-      const cell = resolveCell(event.target);
-      if (!cell || !container.contains(cell)) {
-        return;
-      }
-
-      if (cell === editingCellRef.current) {
-        endEditing(cell);
-      }
-    };
-
-    const documentDoubleClickLogger = (event) => {
-      console.log('doc dblclick', event.target.tagName);
-    };
-
-    document.addEventListener('dblclick', documentDoubleClickLogger, true);
-    container.addEventListener('dblclick', handleDoubleClick, true);
-    container.addEventListener('dblclick', handleDoubleClick);
-    container.addEventListener('keydown', handleKeyDown, true);
-    container.addEventListener('blur', handleBlur, true);
-
-    const sampleCell = container.querySelector('td');
-    if (sampleCell) {
-      sampleCell.addEventListener('dblclick', () => {
-        console.log('cell dblclick fired');
-      }, { once: true });
+  const handleBlur = useCallback((event) => {
+    if (!isEditing) {
+      return;
     }
 
-    return () => {
-      document.removeEventListener('dblclick', documentDoubleClickLogger, true);
-      container.removeEventListener('dblclick', handleDoubleClick, true);
-      container.removeEventListener('dblclick', handleDoubleClick);
-      container.removeEventListener('keydown', handleKeyDown, true);
-      container.removeEventListener('blur', handleBlur, true);
+    const cell = resolveCell(event.target);
+    if (!cell) {
+      return;
+    }
 
-      if (container) {
-        const table = container.querySelector('table');
-        if (table) {
-          const cells = table.querySelectorAll('td, th');
-          cells.forEach((cell) => {
-            cell.removeAttribute('contenteditable');
-            cell.classList.remove('cell-editing');
-          });
-        }
-      }
-      editingCellRef.current = null;
-    };
-  }, [isEditing, beginEditing, endEditing, tableNode]);
+    if (cell === editingCellRef.current) {
+      endEditing(cell);
+    }
+  }, [isEditing, resolveCell, endEditing]);
+
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+
+    const container = tableRef.current;
+    if (!container) {
+      return;
+    }
+
+    const table = container.querySelector('table');
+    if (!table) {
+      return;
+    }
+
+    const cells = table.querySelectorAll('td, th');
+    cells.forEach((cell) => {
+      cell.removeAttribute('contenteditable');
+      cell.classList.remove('cell-editing');
+    });
+  }, [isEditing, htmlContent]);
+
 
   // 인덱스로 셀 찾기
   const getCellByIndex = (rowIndex, colIndex) => {
@@ -612,6 +629,8 @@ const HtmlEditor = ({ record, onUpdate }) => {
       // 현재 HTML 가져오기
       const currentHtml = tableRef.current ? tableRef.current.innerHTML : htmlContent;
       
+      const payloadHtml = stripAutoFormattedNumericStrings(currentHtml);
+      
       const response = await fetch('http://localhost:8080/api/files/update-html', {
         method: 'PUT',
         headers: {
@@ -619,7 +638,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
         },
         body: JSON.stringify({
           recordId: record.id,
-          htmlContent: currentHtml,
+          htmlContent: payloadHtml,
         }),
       });
 
@@ -715,10 +734,31 @@ const HtmlEditor = ({ record, onUpdate }) => {
     if (!isEditing) return;
     
     const cell = getCellElement(e.target);
+    const cellPos = cell ? getCellPosition(cell) : null;
+    const now = Date.now();
+    const lastClick = lastClickCache;
+    const isSameCell =
+      cellPos &&
+      lastClick.pos &&
+      lastClick.pos.row === cellPos.row &&
+      lastClick.pos.col === cellPos.col;
+    const withinThreshold = now - lastClick.timestamp < 400;
+    const isDoubleClick = e.detail >= 2 || (isSameCell && withinThreshold);
     
-    // 더블클릭이면 아무것도 하지 않음 (더블클릭 이벤트가 발생하도록)
-    if (e.detail >= 2) {
-      console.log('handleMouseDown: 더블클릭 감지, 드래그 선택 안함');
+    if (cellPos) {
+      lastClickCache.pos = cellPos;
+      lastClickCache.timestamp = now;
+    }
+    
+    // 더블클릭이면 즉시 편집
+    if (isDoubleClick) {
+      console.log('handleMouseDown: 더블클릭 감지, 즉시 편집 모드 진입');
+      if (cell) {
+        setIsDragging(false);
+        setSelectedCellIndices([]);
+        setStartCellIndex(null);
+        beginEditing(cell);
+      }
       return;
     }
     
@@ -738,6 +778,40 @@ const HtmlEditor = ({ record, onUpdate }) => {
       }
     }
   };
+
+  const handleDoubleClick = useCallback((event) => {
+    if (!isEditing) {
+      return;
+    }
+
+    const cell = resolveCell(event.target);
+    if (!cell) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsDragging(false);
+    setSelectedCellIndices([]);
+    setStartCellIndex(null);
+    beginEditing(cell);
+  }, [isEditing, resolveCell, beginEditing]);
+
+  const handleClickCapture = useCallback((event) => {
+    if (!isEditing || event.detail < 2) {
+      return;
+    }
+
+    const cell = resolveCell(event.target);
+    if (!cell) {
+      return;
+    }
+
+    event.preventDefault();
+    setIsDragging(false);
+    setSelectedCellIndices([]);
+    setStartCellIndex(null);
+    beginEditing(cell);
+  }, [isEditing, resolveCell, beginEditing]);
 
   const handleMouseMove = (e) => {
     if (!isEditing || !isDragging || !startCellIndex) return;
@@ -968,6 +1042,10 @@ const HtmlEditor = ({ record, onUpdate }) => {
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
+              onDoubleClickCapture={handleDoubleClick}
+              onClickCapture={handleClickCapture}
+              onKeyDownCapture={handleKeyDown}
+              onBlurCapture={handleBlur}
               style={{ userSelect: 'none' }}
             />
           ) : (

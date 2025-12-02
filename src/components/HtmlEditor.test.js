@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HtmlEditor from './HtmlEditor';
 
@@ -87,7 +87,7 @@ describe('HtmlEditor 셀 편집', () => {
     const cell = document.querySelector('.editable-table td');
     expect(cell).not.toBeNull();
 
-    await userEvent.dblClick(cell);
+    fireEvent.dblClick(cell);
     await act(async () => {
       jest.advanceTimersByTime(16);
     });
@@ -101,7 +101,7 @@ describe('HtmlEditor 셀 편집', () => {
     const secondTableCell = document.querySelector('#second-table td');
     expect(secondTableCell).not.toBeNull();
 
-    await userEvent.dblClick(secondTableCell);
+    fireEvent.dblClick(secondTableCell);
     await act(async () => {
       jest.advanceTimersByTime(16);
     });
