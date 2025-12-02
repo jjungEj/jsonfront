@@ -159,7 +159,10 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
   const [selectedCellIndices, setSelectedCellIndices] = useState([]); // [{row, col}, ...] 형태로 저장
   const [isDragging, setIsDragging] = useState(false);
   const [startCellIndex, setStartCellIndex] = useState(null);
+  const [pendingEditPosition, setPendingEditPosition] = useState(null);
   const tableRef = useRef(null);
+  const previewRef = useRef(null);
+  const [tableNode, setTableNode] = useState(null);
   const editingCellRef = useRef(null); // 현재 편집 중인 셀
   const savedHtmlRef = useRef(htmlContent);
 
@@ -179,6 +182,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     setIsEditing(false);
     setSelectedCellIndices([]);
     setStartCellIndex(null);
+    setPendingEditPosition(null);
     editingCellRef.current = null;
     
     // 레코드 변경 시 스타일 제거 (여러 번 실행)
@@ -200,6 +204,12 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     setTimeout(removeStyles, 50);
     setTimeout(removeStyles, 100);
   }, [record, updateHtmlContent]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setPendingEditPosition(null);
+    }
+  }, [isEditing]);
 
   // 셀 편집 (더블클릭) - 컨테이너 단위 이벤트 델리게이션
   const beginEditing = useCallback((cell) => {
@@ -404,6 +414,18 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     if (colIndex < 0 || colIndex >= cells.length) return null;
     return cells[colIndex];
   };
+
+  useEffect(() => {
+    if (!isEditing || !pendingEditPosition) {
+      return;
+    }
+    const cell = getCellByIndex(pendingEditPosition.row, pendingEditPosition.col);
+    if (!cell) {
+      return;
+    }
+    beginEditing(cell);
+    setPendingEditPosition(null);
+  }, [isEditing, pendingEditPosition, beginEditing, tableNode]);
 
   // 테이블 셀 맵 구축 (rowspan, colspan 고려)
   const buildTableCellMaps = (table) => {
@@ -661,15 +683,20 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     }
   };
 
-  const getCellElement = (element) => {
+  const resolveCellWithinBoundary = (element, boundary) => {
     let node = element;
-    while (node && node !== tableRef.current) {
+    while (node && node !== boundary) {
       if (node.tagName === 'TD' || node.tagName === 'TH') {
         return node;
       }
       node = node.parentElement;
     }
     return null;
+  };
+
+  const getCellElement = (element) => {
+    if (!tableRef.current) return null;
+    return resolveCellWithinBoundary(element, tableRef.current);
   };
 
   const getCellPosition = (cell) => {
@@ -688,6 +715,37 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     }
     return null;
   };
+
+  useEffect(() => {
+    if (isEditing) {
+      return;
+    }
+    const previewNode = previewRef.current;
+    if (!previewNode) {
+      return;
+    }
+
+    const handlePreviewDoubleClick = (event) => {
+      const cell = resolveCellWithinBoundary(event.target, previewNode);
+      if (!cell) {
+        return;
+      }
+      event.preventDefault();
+      const position = getCellPosition(cell);
+      if (!position) {
+        return;
+      }
+      setPendingEditPosition(position);
+      if (!isEditing) {
+        setIsEditing(true);
+      }
+    };
+
+    previewNode.addEventListener('dblclick', handlePreviewDoubleClick);
+    return () => {
+      previewNode.removeEventListener('dblclick', handlePreviewDoubleClick);
+    };
+  }, [isEditing, htmlContent]);
 
   const getCellIndicesBetween = (startPos, endPos) => {
     if (!startPos || !endPos) return [];
@@ -1028,7 +1086,8 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
             />
           ) : (
             <div
-              className="preview-table excel-preview"
+              ref={previewRef}
+              className="preview-table"
               dangerouslySetInnerHTML={{ __html: htmlContent }}
             />
           )}
