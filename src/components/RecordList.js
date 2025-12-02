@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import './RecordList.css';
 
 const RecordList = ({
+  title = '변환 기록',
   records,
   selectedRecord,
   selectedRecords,
@@ -84,7 +85,7 @@ const RecordList = ({
   return (
     <div className="record-list">
       <div className="record-list-header">
-        <h2>변환 기록</h2>
+        <h2>{title}</h2>
         <button onClick={onRefresh} className="refresh-btn">새로고침</button>
       </div>
       

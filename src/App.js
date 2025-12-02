@@ -168,11 +168,11 @@ function App() {
       <header className="App-header">
         <h1>Excel to HTML Converter</h1>
       </header>
-      <div className="container">
-        <div className="left-panel">
+      <div className="layout-grid">
+        <div className="left-column">
           <FileUpload onUploaded={handleFileUploaded} />
-          <JsonlMerger />
           <RecordList
+            title="내가 올린 파일들"
             records={records}
             selectedRecord={selectedRecord}
             selectedRecords={selectedRecords}
@@ -183,17 +183,20 @@ function App() {
             onDelete={handleDeleteRecord}
           />
         </div>
-        <div className="right-panel">
-          {selectedRecord ? (
-            <HtmlEditor
-              record={selectedRecord}
-              onUpdate={fetchRecords}
-            />
-          ) : (
-            <div className="empty-state">
-              <p>파일을 업로드하거나 레코드를 선택해주세요.</p>
-            </div>
-          )}
+        <div className="right-column">
+          <JsonlMerger />
+          <div className="editor-wrapper">
+            {selectedRecord ? (
+              <HtmlEditor
+                record={selectedRecord}
+                onUpdate={fetchRecords}
+              />
+            ) : (
+              <div className="empty-state">
+                <p>파일을 업로드하거나 레코드를 선택해주세요.</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
