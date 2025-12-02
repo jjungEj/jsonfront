@@ -746,19 +746,21 @@ const HtmlEditor = ({ record, onUpdate }) => {
     
     // 가로 스크롤 자동 이동
     if (tableRef.current) {
-      const editorContent = tableRef.current.closest('.editor-content');
-      if (editorContent) {
-        const rect = editorContent.getBoundingClientRect();
+      const scrollContainer =
+        tableRef.current.closest('.editor-scroll') ||
+        tableRef.current.closest('.editor-content');
+      if (scrollContainer) {
+        const rect = scrollContainer.getBoundingClientRect();
         const mouseX = e.clientX;
         const scrollSpeed = 10;
         
         // 오른쪽 끝 근처에서 오른쪽으로 스크롤
         if (mouseX > rect.right - 50) {
-          editorContent.scrollLeft += scrollSpeed;
+          scrollContainer.scrollLeft += scrollSpeed;
         }
         // 왼쪽 끝 근처에서 왼쪽으로 스크롤
         else if (mouseX < rect.left + 50) {
-          editorContent.scrollLeft -= scrollSpeed;
+          scrollContainer.scrollLeft -= scrollSpeed;
         }
       }
     }
@@ -956,23 +958,25 @@ const HtmlEditor = ({ record, onUpdate }) => {
         </div>
       </div>
       <div className="editor-content">
-        {isEditing ? (
-          <div
-            ref={attachTableRef}
-            className="editable-table"
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            style={{ userSelect: 'none' }}
-          />
-        ) : (
-          <div
-            className="preview-table"
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
-          />
-        )}
+        <div className="editor-scroll">
+          {isEditing ? (
+            <div
+              ref={attachTableRef}
+              className="editable-table"
+              dangerouslySetInnerHTML={{ __html: htmlContent }}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              style={{ userSelect: 'none' }}
+            />
+          ) : (
+            <div
+              className="preview-table"
+              dangerouslySetInnerHTML={{ __html: htmlContent }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

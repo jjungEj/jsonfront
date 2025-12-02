@@ -163,6 +163,68 @@ function App() {
     }
   };
 
+  const handleMergeSelectedRecords = async () => {
+    if (selectedRecords.length < 2) {
+      alert('병합할 레코드를 2개 이상 선택해주세요.');
+      return;
+    }
+
+    const selectedJsonRecords = records.filter(
+      (record) => selectedRecords.includes(record.id) && record.fileType === 'json'
+    );
+
+    if (selectedJsonRecords.length < 2) {
+      alert('JSONL 파일로 변환된 항목을 2개 이상 선택해주세요.');
+      return;
+    }
+
+    try {
+      const mergedPieces = [];
+
+      for (const record of selectedJsonRecords) {
+        const response = await fetch('http://localhost:8080/api/files/download-jsonl', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ recordIds: [record.id] }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`레코드 ${record.id} 다운로드 실패`);
+        }
+
+        const blob = await response.blob();
+        const text = (await blob.text()).trim();
+        if (text) {
+          mergedPieces.push(text);
+        }
+      }
+
+      if (mergedPieces.length === 0) {
+        alert('병합할 JSONL 내용이 없습니다.');
+        return;
+      }
+
+      const mergedContent = mergedPieces.join('\n') + '\n';
+      const mergedBlob = new Blob([mergedContent], { type: 'application/x-ndjson' });
+      const url = window.URL.createObjectURL(mergedBlob);
+      const a = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `merged-${timestamp}.jsonl`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      alert(`${selectedJsonRecords.length}개 JSONL 파일이 병합되었습니다.`);
+    } catch (error) {
+      console.error('JSONL 병합 실패:', error);
+      alert('JSONL 병합 중 오류가 발생했습니다.');
+    }
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -179,6 +241,7 @@ function App() {
             onRecordSelect={handleRecordSelect}
             onRecordToggle={handleRecordToggle}
             onDownload={handleDownloadJsonl}
+            onMerge={handleMergeSelectedRecords}
             onRefresh={fetchRecords}
             onDelete={handleDeleteRecord}
           />
