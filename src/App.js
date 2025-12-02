@@ -281,7 +281,7 @@ function App() {
       <div className="layout-grid">
         <div className="top-panels">
           <RecordList
-            title="내가 올린 파일들"
+            title="업로드 된 파일"
             records={records}
             selectedRecord={selectedRecord}
             selectedRecords={selectedRecords}
