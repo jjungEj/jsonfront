@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import './RecordList.css';
 
+const PAGE_WINDOW = 5;
+
 const RecordList = ({
   title = '변환 기록',
   records,
@@ -12,12 +14,13 @@ const RecordList = ({
   onRefresh,
   onDelete,
   onMerge = () => {},
+  headerAction = null,
 }) => {
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'excel', 'json'
   const [currentPage, setCurrentPage] = useState(1);
   const [currentPageExcel, setCurrentPageExcel] = useState(1);
   const [currentPageJson, setCurrentPageJson] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 5;
 
   // 파일 타입별로 분류
   const excelRecords = useMemo(() => 
@@ -92,10 +95,40 @@ const RecordList = ({
     setCurrentPageForTab(1);
   };
 
+  const pageNumbers = useMemo(() => {
+    if (totalPages === 0) return [];
+    const half = Math.floor(PAGE_WINDOW / 2);
+    let start = currentPageNum - half;
+    let end = currentPageNum + half;
+
+    if (start < 1) {
+      start = 1;
+      end = Math.min(PAGE_WINDOW, totalPages);
+    }
+
+    if (end > totalPages) {
+      end = totalPages;
+      start = Math.max(1, totalPages - PAGE_WINDOW + 1);
+    }
+
+    const numbers = [];
+    for (let i = start; i <= end; i += 1) {
+      numbers.push(i);
+    }
+    return numbers;
+  }, [totalPages, currentPageNum]);
+
   return (
     <div className="record-list">
       <div className="record-list-header">
-        <h2>{title}</h2>
+        <div className="record-list-title">
+          <h2>{title}</h2>
+          {headerAction && (
+            <div className="record-list-action">
+              {headerAction}
+            </div>
+          )}
+        </div>
         <button onClick={onRefresh} className="refresh-btn">새로고침</button>
       </div>
       
@@ -230,19 +263,29 @@ const RecordList = ({
           <button
             onClick={() => setCurrentPageForTab(Math.max(1, currentPageNum - 1))}
             disabled={currentPageNum === 1}
-            className="page-btn"
+            className="page-arrow-btn"
+            aria-label="이전 페이지"
           >
-            이전
+            &lt;
           </button>
-          <span className="page-info">
-            {currentPageNum} / {totalPages}
-          </span>
+          <div className="page-number-group">
+            {pageNumbers.map((page) => (
+              <button
+                key={page}
+                className={`page-number-btn ${page === currentPageNum ? 'active' : ''}`}
+                onClick={() => setCurrentPageForTab(page)}
+              >
+                {page}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setCurrentPageForTab(Math.min(totalPages, currentPageNum + 1))}
             disabled={currentPageNum === totalPages}
-            className="page-btn"
+            className="page-arrow-btn"
+            aria-label="다음 페이지"
           >
-            다음
+            &gt;
           </button>
         </div>
       )}

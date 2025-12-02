@@ -1,12 +1,21 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import './FileUpload.css';
 
 const ACCEPTED_EXTENSIONS = ['xlsx', 'csv', 'json'];
 
-const FileUpload = ({ onUploaded }) => {
+const FileUpload = ({
+  onUploaded,
+  variant = 'card',
+  triggerLabel = '파일 선택',
+}) => {
   const [error, setError] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatuses, setUploadStatuses] = useState([]);
+  const inputRef = useRef(null);
+  const inputId = useMemo(
+    () => `file-input-${Math.random().toString(36).slice(2, 9)}`,
+    []
+  );
 
   const updateStatus = useCallback((id, patch) => {
     setUploadStatuses((prev) =>
@@ -38,6 +47,8 @@ const FileUpload = ({ onUploaded }) => {
   const handleFileChange = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
+
+    setError(null);
 
     const validFiles = [];
     const invalidFiles = [];
@@ -94,15 +105,46 @@ const FileUpload = ({ onUploaded }) => {
     e.target.value = '';
   };
 
+  const triggerFileDialog = () => {
+    if (isUploading) return;
+    inputRef.current?.click();
+  };
+
+  if (variant === 'inline') {
+    return (
+      <div className="file-upload-inline">
+        <input
+          ref={inputRef}
+          type="file"
+          style={{ display: 'none' }}
+          multiple
+          accept=".xlsx,.csv,.json"
+          onChange={handleFileChange}
+          disabled={isUploading}
+        />
+        <button
+          type="button"
+          className="inline-upload-btn"
+          onClick={triggerFileDialog}
+          disabled={isUploading}
+        >
+          {isUploading ? '업로드 중...' : triggerLabel}
+        </button>
+        {error && <span className="inline-upload-error">{error}</span>}
+      </div>
+    );
+  }
+
   return (
     <div className="file-upload">
       <h2>파일 선택</h2>
       <div className="upload-area">
-        <label className="upload-label" htmlFor="file-input">
+        <label className="upload-label" htmlFor={inputId}>
           여러 파일을 선택하면 즉시 업로드됩니다.
         </label>
         <input
-          id="file-input"
+          ref={inputRef}
+          id={inputId}
           type="file"
           multiple
           accept=".xlsx,.csv,.json"
@@ -128,7 +170,9 @@ const FileUpload = ({ onUploaded }) => {
                   >
                     {item.status}
                   </span>
-                  {item.message && <span className="status-message">{item.message}</span>}
+                  {item.message && (
+                    <span className="status-message">{item.message}</span>
+                  )}
                 </li>
               ))}
             </ul>

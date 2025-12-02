@@ -11,13 +11,25 @@
 .record-list-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
   margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.record-list-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .record-list-header h2 {
   margin: 0;
   color: #333;
+}
+
+.record-list-action {
+  flex-shrink: 0;
 }
 
 .refresh-btn {
@@ -230,37 +242,61 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   margin-top: 15px;
   padding-top: 15px;
   border-top: 1px solid #ddd;
+  flex-wrap: wrap;
 }
 
-.page-btn {
+.page-arrow-btn {
   padding: 6px 12px;
-  background: #007bff;
-  color: white;
+  background: #f1f3f5;
+  color: #333;
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   cursor: pointer;
   font-size: 14px;
+  min-width: 36px;
   transition: background 0.2s;
 }
 
-.page-btn:hover:not(:disabled) {
-  background: #0056b3;
+.page-arrow-btn:hover:not(:disabled) {
+  background: #e2e6ea;
 }
 
-.page-btn:disabled {
-  background: #ccc;
+.page-arrow-btn:disabled {
+  background: #f1f3f5;
+  color: #bbb;
   cursor: not-allowed;
 }
 
-.page-info {
+.page-number-group {
+  display: flex;
+  gap: 6px;
+}
+
+.page-number-btn {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  min-width: 36px;
   font-size: 14px;
-  color: #666;
-  min-width: 60px;
-  text-align: center;
+  transition: all 0.2s;
+}
+
+.page-number-btn.active {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+  font-weight: 600;
+}
+
+.page-number-btn:hover:not(.active) {
+  border-color: #007bff;
+  color: #007bff;
 }
 
 .delete-btn {
