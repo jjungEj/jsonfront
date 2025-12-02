@@ -174,9 +174,6 @@ const HtmlEditor = ({ record, onUpdate }) => {
     const setupEventHandlers = () => {
       if (!tableRef.current) return;
       
-      const table = tableRef.current.querySelector('table');
-      if (!table) return;
-
       // 기존 이벤트 리스너 제거
       eventBindings.forEach(({ cell, type, handler }) => {
         if (cell && cell.removeEventListener) {
@@ -185,7 +182,7 @@ const HtmlEditor = ({ record, onUpdate }) => {
       });
       eventBindings = [];
 
-      const cells = table.querySelectorAll('td, th');
+      const cells = tableRef.current.querySelectorAll('td, th');
       if (cells.length === 0) return;
 
       const createDblClickHandler = (cell) => (event) => {
