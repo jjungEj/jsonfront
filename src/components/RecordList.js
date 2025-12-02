@@ -11,6 +11,7 @@ const RecordList = ({
   onDownload,
   onRefresh,
   onDelete,
+  onMerge = () => {},
 }) => {
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'excel', 'json'
   const [currentPage, setCurrentPage] = useState(1);
@@ -53,6 +54,15 @@ const RecordList = ({
   const startIndex = (currentPageNum - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedRecords = currentRecords.slice(startIndex, endIndex);
+
+  const selectedJsonCount = useMemo(
+    () =>
+      selectedRecords.filter((id) => {
+        const target = records.find((record) => record.id === id);
+        return target?.fileType === 'json';
+      }).length,
+    [records, selectedRecords]
+  );
 
   // 전체 선택/해제
   const allSelected = paginatedRecords.length > 0 && 
@@ -133,6 +143,20 @@ const RecordList = ({
           </button>
           <button
             onClick={() => {
+              if (selectedJsonCount < 2) {
+                alert('JSONL 파일을 2개 이상 선택해주세요.');
+                return;
+              }
+              onMerge();
+            }}
+            disabled={selectedJsonCount < 2}
+            className="merge-selected-btn"
+            title="JSONL 파일만 병합할 수 있습니다."
+          >
+            JSONL 병합 ({selectedJsonCount})
+          </button>
+          <button
+            onClick={() => {
               if (selectedRecords.length === 0) {
                 alert('삭제할 레코드를 선택해주세요.');
                 return;
@@ -147,6 +171,9 @@ const RecordList = ({
             선택 삭제 ({selectedRecords.length})
           </button>
         </div>
+        {selectedRecords.length > 0 && selectedJsonCount < selectedRecords.length && (
+          <p className="action-hint">JSONL 파일만 병합 대상에 포함됩니다.</p>
+        )}
       </div>
       <div className="records">
         {paginatedRecords.length === 0 ? (
