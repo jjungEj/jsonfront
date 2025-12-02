@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import FileUpload from './components/FileUpload';
 import HtmlEditor from './components/HtmlEditor';
 import RecordList from './components/RecordList';
 import JsonlMerger from './components/JsonlMerger';
+import FileUpload from './components/FileUpload';
 
 function App() {
   const [records, setRecords] = useState([]);
@@ -231,8 +231,7 @@ function App() {
         <h1>Excel to HTML Converter</h1>
       </header>
       <div className="layout-grid">
-        <div className="left-column">
-          <FileUpload onUploaded={handleFileUploaded} />
+        <div className="top-panels">
           <RecordList
             title="내가 올린 파일들"
             records={records}
@@ -244,10 +243,17 @@ function App() {
             onMerge={handleMergeSelectedRecords}
             onRefresh={fetchRecords}
             onDelete={handleDeleteRecord}
+            headerAction={
+              <FileUpload
+                onUploaded={handleFileUploaded}
+                variant="inline"
+                triggerLabel="파일 선택"
+              />
+            }
           />
-        </div>
-        <div className="right-column">
           <JsonlMerger />
+        </div>
+        <div className="bottom-panel">
           <div className="editor-wrapper">
             {selectedRecord ? (
               <HtmlEditor
