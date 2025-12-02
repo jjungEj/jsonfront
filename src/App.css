@@ -16,22 +16,31 @@
   font-size: 2rem;
 }
 
-.container {
+.layout-grid {
   display: flex;
-  gap: 20px;
+  gap: 24px;
   padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
+  align-items: flex-start;
 }
 
-.left-panel {
+.left-column {
+  flex: 0 0 40%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.right-column {
   flex: 1;
-  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.right-panel {
-  flex: 2;
-  min-width: 600px;
+.editor-wrapper {
+  width: 100%;
 }
 
 .empty-state {
@@ -43,7 +52,12 @@
 }
 
 @media (max-width: 768px) {
-  .container {
+  .layout-grid {
     flex-direction: column;
+  }
+
+  .left-column,
+  .right-column {
+    flex: 1;
   }
 }
