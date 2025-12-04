@@ -162,9 +162,9 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
   const [pendingEditPosition, setPendingEditPosition] = useState(null);
   const tableRef = useRef(null);
   const previewRef = useRef(null);
-  const [tableNode, setTableNode] = useState(null);
   const editingCellRef = useRef(null); // 현재 편집 중인 셀
   const savedHtmlRef = useRef(htmlContent);
+  const tableMapsRef = useRef(null);
 
   const updateHtmlContent = useCallback((rawHtml) => {
     const normalized = formatHtmlNumericStrings(rawHtml || '');
@@ -176,6 +176,27 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     tableRef.current = node;
   }, []);
 
+  const refreshEditorTableMaps = useCallback(() => {
+    if (!tableRef.current) {
+      tableMapsRef.current = null;
+      return null;
+    }
+
+    const tableElement = tableRef.current.querySelector('table');
+    if (!tableElement) {
+      tableMapsRef.current = null;
+      return null;
+    }
+
+    const maps = buildTableCellMaps(tableElement);
+    tableMapsRef.current = { ...maps, tableElement };
+    return tableMapsRef.current;
+  }, []);
+
+  const getEditorTableMaps = useCallback(() => {
+    return tableMapsRef.current || refreshEditorTableMaps();
+  }, [refreshEditorTableMaps]);
+
   useEffect(() => {
     const newHtml = record.htmlContent || '';
     updateHtmlContent(newHtml);
@@ -184,6 +205,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     setStartCellIndex(null);
     setPendingEditPosition(null);
     editingCellRef.current = null;
+    tableMapsRef.current = null;
     
     // 레코드 변경 시 스타일 제거 (여러 번 실행)
     const removeStyles = () => {
@@ -210,6 +232,19 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
       setPendingEditPosition(null);
     }
   }, [isEditing]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      tableMapsRef.current = null;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      refreshEditorTableMaps();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [htmlContent, isEditing, refreshEditorTableMaps]);
 
   // 셀 편집 (더블클릭) - 컨테이너 단위 이벤트 델리게이션
   /**
@@ -408,29 +443,41 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
 
 
   // 인덱스로 셀 찾기
-  const getCellByIndex = (rowIndex, colIndex) => {
-    if (!tableRef.current) return null;
-    const table = tableRef.current.querySelector('table');
-    if (!table) return null;
-    const rows = Array.from(table.rows);
-    if (rowIndex < 0 || rowIndex >= rows.length) return null;
-    const row = rows[rowIndex];
-    const cells = Array.from(row.cells);
-    if (colIndex < 0 || colIndex >= cells.length) return null;
-    return cells[colIndex];
-  };
+  const getCellByIndex = useCallback(
+    (rowIndex, colIndex) => {
+      const maps = getEditorTableMaps() || refreshEditorTableMaps();
+      if (!maps) return null;
+      return maps.matrix[rowIndex]?.[colIndex] || null;
+    },
+    [getEditorTableMaps, refreshEditorTableMaps]
+  );
 
   useEffect(() => {
     if (!isEditing || !pendingEditPosition) {
       return;
     }
-    const cell = getCellByIndex(pendingEditPosition.row, pendingEditPosition.col);
-    if (!cell) {
-      return;
+
+    const focusCell = () => {
+      const cell = getCellByIndex(pendingEditPosition.row, pendingEditPosition.col);
+      if (!cell) {
+        return false;
+      }
+      beginEditing(cell);
+      setPendingEditPosition(null);
+      return true;
+    };
+
+    if (focusCell()) {
+      return undefined;
     }
-    beginEditing(cell);
-    setPendingEditPosition(null);
-  }, [isEditing, pendingEditPosition, beginEditing, tableNode]);
+
+    const timer = setTimeout(() => {
+      refreshEditorTableMaps();
+      focusCell();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [isEditing, pendingEditPosition, beginEditing, getCellByIndex, refreshEditorTableMaps]);
 
   // 테이블 셀 맵 구축 (rowspan, colspan 고려)
   const buildTableCellMaps = (table) => {
@@ -554,7 +601,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
         }
       });
     }
-  }, [isEditing, selectedCellIndices]);
+  }, [isEditing, selectedCellIndices, getCellByIndex]);
 
   useEffect(() => {
     if (!tableRef.current) return;
@@ -719,22 +766,63 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     return resolveCellWithinBoundary(element, tableRef.current);
   };
 
-  const getCellPosition = (cell) => {
-    const table = cell.closest('table');
-    if (!table) return null;
-    
-    const rows = Array.from(table.rows);
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-      const row = rows[rowIndex];
-      const cells = Array.from(row.cells);
-      for (let cellIndex = 0; cellIndex < cells.length; cellIndex++) {
-        if (cells[cellIndex] === cell) {
-          return { row: rowIndex, col: cellIndex };
+  const getCellPosition = useCallback(
+    (cell, options = {}) => {
+      if (!cell) return null;
+
+      const { rootNode } = options;
+      if (rootNode && rootNode !== tableRef.current) {
+        const tableElement = rootNode.tagName === 'TABLE' ? rootNode : rootNode.querySelector('table');
+        if (!tableElement) {
+          return null;
         }
+        const maps = buildTableCellMaps(tableElement);
+        const meta = maps.cellMetaMap.get(cell);
+        if (!meta) {
+          return null;
+        }
+        return {
+          row: meta.rowIndex,
+          col: meta.colIndex,
+          rowspan: meta.rowspan,
+          colspan: meta.colspan,
+        };
       }
-    }
-    return null;
-  };
+
+      const maps = getEditorTableMaps() || refreshEditorTableMaps();
+      if (!maps) {
+        return null;
+      }
+
+      const meta = maps.cellMetaMap.get(cell);
+      if (meta) {
+        return {
+          row: meta.rowIndex,
+          col: meta.colIndex,
+          rowspan: meta.rowspan,
+          colspan: meta.colspan,
+        };
+      }
+
+      const refreshed = refreshEditorTableMaps();
+      if (!refreshed) {
+        return null;
+      }
+
+      const fallback = refreshed.cellMetaMap.get(cell);
+      if (!fallback) {
+        return null;
+      }
+
+      return {
+        row: fallback.rowIndex,
+        col: fallback.colIndex,
+        rowspan: fallback.rowspan,
+        colspan: fallback.colspan,
+      };
+    },
+    [getEditorTableMaps, refreshEditorTableMaps, tableRef]
+  );
 
   useEffect(() => {
     if (isEditing) {
@@ -751,7 +839,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
         return;
       }
       event.preventDefault();
-      const position = getCellPosition(cell);
+      const position = getCellPosition(cell, { rootNode: previewNode });
       if (!position) {
         return;
       }
@@ -767,26 +855,45 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     };
   }, [isEditing, htmlContent]);
 
-  const getCellIndicesBetween = (startPos, endPos) => {
-    if (!startPos || !endPos) return [];
-    
-    const indices = [];
-    
-    // 시작과 끝 위치의 최소/최대값 계산
-    const minRow = Math.min(startPos.row, endPos.row);
-    const maxRow = Math.max(startPos.row, endPos.row);
-    const minCol = Math.min(startPos.col, endPos.col);
-    const maxCol = Math.max(startPos.col, endPos.col);
-    
-    // 사각형 영역의 모든 셀 선택
-    for (let row = minRow; row <= maxRow; row++) {
-      for (let col = minCol; col <= maxCol; col++) {
-        indices.push({ row, col });
+  const getCellIndicesBetween = useCallback(
+    (startMeta, endMeta) => {
+      if (!startMeta || !endMeta) return [];
+
+      const maps = getEditorTableMaps() || refreshEditorTableMaps();
+      if (!maps) return [];
+
+      const { matrix, cellMetaMap } = maps;
+      const startRowEnd = startMeta.row + (startMeta.rowspan || 1) - 1;
+      const endRowEnd = endMeta.row + (endMeta.rowspan || 1) - 1;
+      const startColEnd = startMeta.col + (startMeta.colspan || 1) - 1;
+      const endColEnd = endMeta.col + (endMeta.colspan || 1) - 1;
+
+      const minRow = Math.min(startMeta.row, endMeta.row);
+      const maxRow = Math.max(startRowEnd, endRowEnd);
+      const minCol = Math.min(startMeta.col, endMeta.col);
+      const maxCol = Math.max(startColEnd, endColEnd);
+
+      const selected = new Map();
+
+      for (let row = minRow; row <= maxRow; row++) {
+        const rowCells = matrix[row];
+        if (!rowCells) continue;
+        for (let col = minCol; col <= maxCol; col++) {
+          const occupant = rowCells[col];
+          if (!occupant) continue;
+          const meta = cellMetaMap.get(occupant);
+          if (!meta) continue;
+          const key = `${meta.rowIndex}:${meta.colIndex}`;
+          if (!selected.has(key)) {
+            selected.set(key, { row: meta.rowIndex, col: meta.colIndex });
+          }
+        }
       }
-    }
-    
-    return indices;
-  };
+
+      return Array.from(selected.values());
+    },
+    [getEditorTableMaps, refreshEditorTableMaps]
+  );
 
   const handleMouseDown = (e) => {
     if (!isEditing) return;
@@ -804,7 +911,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     const isDoubleClick = e.detail >= 2 || (isSameCell && withinThreshold);
     
     if (cellPos) {
-      lastClickCache.pos = cellPos;
+      lastClickCache.pos = { row: cellPos.row, col: cellPos.col };
       lastClickCache.timestamp = now;
     }
     
@@ -834,11 +941,11 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
       }
       
       // 단일 클릭일 때만 드래그 선택 시작
-      const pos = getCellPosition(cell);
+      const pos = cellPos || getCellPosition(cell);
       if (pos) {
         setIsDragging(true);
         setStartCellIndex(pos);
-        setSelectedCellIndices([pos]);
+        setSelectedCellIndices([{ row: pos.row, col: pos.col }]);
       }
     }
   };
@@ -1110,7 +1217,6 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
               onClickCapture={handleClickCapture}
               onKeyDownCapture={handleKeyDown}
               onBlurCapture={handleBlur}
-              style={{ userSelect: 'none' }}
             />
           ) : (
             <div
