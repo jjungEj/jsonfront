@@ -156,7 +156,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
   const [htmlContent, setHtmlContent] = useState(() => formatHtmlNumericStrings(record.htmlContent || ''));
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedCellIndices, setSelectedCellIndices] = useState([]); // [{row, col}, ...] 형태로 저장
+  const [selectedCellIndices, setSelectedCellIndices] = useState([]); // [{row, col, cell}, ...] 형태로 저장
   const [isDragging, setIsDragging] = useState(false);
   const [startCellIndex, setStartCellIndex] = useState(null);
   const [pendingEditPosition, setPendingEditPosition] = useState(null);
@@ -584,8 +584,10 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     
     // 편집 모드일 때만 선택된 셀 스타일 적용
     if (selectedCellIndices.length > 0) {
-      selectedCellIndices.forEach(({ row, col }) => {
-        const cell = getCellByIndex(row, col);
+      selectedCellIndices.forEach(({ row, col, cell: cachedCell }) => {
+        const cell =
+          (cachedCell && cachedCell.isConnected ? cachedCell : null) ||
+          getCellByIndex(row, col);
         if (cell) {
           try {
             // 클래스 추가
@@ -786,6 +788,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
           col: meta.colIndex,
           rowspan: meta.rowspan,
           colspan: meta.colspan,
+          cell,
         };
       }
 
@@ -801,6 +804,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
           col: meta.colIndex,
           rowspan: meta.rowspan,
           colspan: meta.colspan,
+          cell,
         };
       }
 
@@ -819,6 +823,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
         col: fallback.colIndex,
         rowspan: fallback.rowspan,
         colspan: fallback.colspan,
+        cell,
       };
     },
     [getEditorTableMaps, refreshEditorTableMaps, tableRef]
@@ -885,7 +890,11 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
           if (!meta) continue;
           const key = `${meta.rowIndex}:${meta.colIndex}`;
           if (!selected.has(key)) {
-            selected.set(key, { row: meta.rowIndex, col: meta.colIndex });
+            selected.set(key, {
+              row: meta.rowIndex,
+              col: meta.colIndex,
+              cell: occupant,
+            });
           }
         }
       }
@@ -945,7 +954,7 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
       if (pos) {
         setIsDragging(true);
         setStartCellIndex(pos);
-        setSelectedCellIndices([{ row: pos.row, col: pos.col }]);
+        setSelectedCellIndices([{ row: pos.row, col: pos.col, cell }]);
       }
     }
   };
@@ -1058,7 +1067,9 @@ const HtmlEditor = ({ record, onRecordUpdate = () => {} }) => {
     // 선택된 셀 요소들을 찾아서 Set에 저장
     const selectedCellSet = new Set();
     for (const idx of sortedIndices) {
-      const cellElement = findCellByCoordinates(matrix, idx.row, idx.col);
+      const cellElement =
+        (idx.cell && idx.cell.isConnected ? idx.cell : null) ||
+        findCellByCoordinates(matrix, idx.row, idx.col);
       if (!cellElement) {
         alert('선택한 영역을 해석할 수 없습니다.');
         return;
